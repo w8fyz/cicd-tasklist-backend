@@ -58,14 +58,7 @@ pipeline {
                     sh '''
                         npx sonarqube-scanner \
                             -Dsonar.host.url=https://sonarqube.cicd.kits.ext.educentre.fr \
-                            -Dsonar.token=${SONAR_TOKEN} \
-                            -Dsonar.projectKey=thibeau-tasklist-backend \
-                            -Dsonar.projectName=Thibeau-TaskList-Backend \
-                            -Dsonar.sources=src \
-                            -Dsonar.exclusions=src/__tests__/**,**/*.test.ts \
-                            -Dsonar.tests=src/__tests__ \
-                            -Dsonar.test.inclusions=**/*.test.ts \
-                            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+                            -Dsonar.token=${SONAR_TOKEN}
                     '''
                 }
                 }
@@ -119,6 +112,27 @@ pipeline {
             post {
                 always {
                     archiveArtifacts artifacts: 'trivy-report.json', allowEmptyArchive: true
+                }
+            }
+        }
+
+        stage('Generation SBOM (SPDX)') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: "${DOCKER_CREDENTIALS}",
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh '''
+                        trivy image --cache-dir "$WORKSPACE/.trivycache" \
+                            --format spdx-json --output sbom-spdx.json \
+                            "$DOCKER_USER/$IMAGE_NAME:$IMAGE_TAG"
+                    '''
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'sbom-spdx.json', allowEmptyArchive: true
                 }
             }
         }
