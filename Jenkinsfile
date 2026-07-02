@@ -103,10 +103,12 @@ pipeline {
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
                     sh '''
-                        trivy image --exit-code 0 --severity HIGH,CRITICAL \
+                        trivy image --cache-dir "$WORKSPACE/.trivycache" \
+                            --exit-code 0 --severity HIGH,CRITICAL \
                             --format table --scanners vuln \
                             "$DOCKER_USER/$IMAGE_NAME:$IMAGE_TAG"
-                        trivy image --format json --output trivy-report.json \
+                        trivy image --cache-dir "$WORKSPACE/.trivycache" \
+                            --format json --output trivy-report.json \
                             --scanners vuln "$DOCKER_USER/$IMAGE_NAME:$IMAGE_TAG"
                     '''
                 }
