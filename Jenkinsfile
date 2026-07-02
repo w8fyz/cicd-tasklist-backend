@@ -1,17 +1,20 @@
 pipeline {
     agent any
 
-    tools {
-        nodejs 'NodeJS_22'
-    }
-
     environment {
         IMAGE_NAME = 'thibeau-tasklist-backend'
         IMAGE_TAG  = "${env.BUILD_NUMBER}"
+        DOCKER_CREDENTIALS = 'thibeau-dockerhub'
+    }
+
+    triggers {
+        githubPush()
     }
 
     options {
         timestamps()
+        timeout(time: 30, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
         disableConcurrentBuilds()
     }
 
@@ -30,7 +33,7 @@ pipeline {
             }
         }
 
-        stage('Qualite de code') {
+        stage('Qualite de code - TypeScript') {
             steps {
                 sh 'npx tsc --noEmit'
             }
@@ -48,7 +51,26 @@ pipeline {
             }
         }
 
-        stage('Analyse de securite') {
+        stage('Qualite de code - SonarQube') {
+            steps {
+                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                    sh '''
+                        npx sonarqube-scanner \
+                            -Dsonar.host.url=https://sonarqube.cicd.kits.ext.educentre.fr \
+                            -Dsonar.token=${SONAR_TOKEN} \
+                            -Dsonar.projectKey=thibeau-tasklist-backend \
+                            -Dsonar.projectName=Thibeau-TaskList-Backend \
+                            -Dsonar.sources=src \
+                            -Dsonar.exclusions=src/__tests__/**,**/*.test.ts \
+                            -Dsonar.tests=src/__tests__ \
+                            -Dsonar.test.inclusions=**/*.test.ts \
+                            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+                    '''
+                }
+            }
+        }
+
+        stage('Analyse de securite - npm audit') {
             steps {
                 sh 'npm audit --audit-level=high'
             }
@@ -64,7 +86,7 @@ pipeline {
         stage('Construction image Docker') {
             steps {
                 withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub',
+                    credentialsId: "${DOCKER_CREDENTIALS}",
                     usernameVariable: 'DOCKER_USER',
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
@@ -73,10 +95,33 @@ pipeline {
             }
         }
 
+        stage('Analyse de securite - Trivy') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: "${DOCKER_CREDENTIALS}",
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh '''
+                        trivy image --exit-code 0 --severity HIGH,CRITICAL \
+                            --format table --scanners vuln \
+                            "$DOCKER_USER/$IMAGE_NAME:$IMAGE_TAG"
+                        trivy image --format json --output trivy-report.json \
+                            --scanners vuln "$DOCKER_USER/$IMAGE_NAME:$IMAGE_TAG"
+                    '''
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'trivy-report.json', allowEmptyArchive: true
+                }
+            }
+        }
+
         stage('Publication Docker Hub') {
             steps {
                 withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub',
+                    credentialsId: "${DOCKER_CREDENTIALS}",
                     usernameVariable: 'DOCKER_USER',
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
