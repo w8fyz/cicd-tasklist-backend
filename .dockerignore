@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+reports
+.git
+.env
+*.md
+Jenkinsfile
+.scannerwork
+prisma/test.db
