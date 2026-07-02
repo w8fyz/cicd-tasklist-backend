@@ -90,6 +90,7 @@ pipeline {
                     usernameVariable: 'DOCKER_USER',
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
+                    sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
                     sh 'docker build -t "$DOCKER_USER/$IMAGE_NAME:$IMAGE_TAG" -t "$DOCKER_USER/$IMAGE_NAME:latest" .'
                 }
             }
